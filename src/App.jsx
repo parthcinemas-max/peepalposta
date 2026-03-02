@@ -260,6 +260,14 @@ export default function App() {
   const platformIcons = { 'YouTube': <Youtube className="w-4 h-4 text-red-600" />, 'Facebook': <Facebook className="w-4 h-4 text-blue-600" />, 'Instagram': <Instagram className="w-4 h-4 text-pink-600" />, 'LinkedIn': <Linkedin className="w-4 h-4 text-blue-700" />, 'X': <Twitter className="w-4 h-4 text-gray-900" /> };
   const customGridClasses = "grid grid-cols-[100px_1.2fr_130px_140px_1.5fr_2.2fr_110px_1.5fr_100px] gap-4";
 
+  // --- Group posts by Month (Fixed missing logic) ---
+  const groupedPosts = posts.reduce((acc, post) => {
+    const month = getMonthName(post.date);
+    if (!acc[month]) acc[month] = [];
+    acc[month].push(post);
+    return acc;
+  }, {});
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans">
       {toast && <div className="fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2 animate-bounce"><span>{toast}</span></div>}
@@ -276,6 +284,13 @@ export default function App() {
       </header>
 
       <main className="max-w-[1800px] mx-auto px-8 py-8 space-y-10">
+        {isLoaded && posts.length === 0 && (
+          <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
+            <h2 className="text-xl font-semibold text-gray-400">No posts planned yet.</h2>
+            <p className="text-gray-400 text-sm mt-1">Click "New Post" or add the first week above.</p>
+          </div>
+        )}
+
         {Object.entries(groupedPosts).map(([month, monthPosts]) => (
           <div key={month} className="bg-white rounded-xl shadow-sm border overflow-hidden">
             <div className="bg-gray-50 px-6 py-4 border-b font-bold uppercase text-gray-500 tracking-widest">{month}</div>
