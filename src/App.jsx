@@ -45,6 +45,10 @@ if (hasFirebase) {
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
+// --- Make.com Webhook URL ---
+// PASTE your Make.com Webhook URL inside these quotes in Step 2:
+const MAKE_WEBHOOK_URL = "https://hook.eu1.make.com/6vtcsm3no1nul88w4od4yk65ya43yqhx"; 
+
 // --- Custom WhatsApp Icon ---
 const WhatsAppIcon = ({ className }) => (
   <svg className={className} fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -283,21 +287,67 @@ export default function App() {
     }, 1000);
   };
 
-  // --- Platform Link Simulator ---
+  // --- Platform Link Simulator with Realistic OAuth Popup ---
   const togglePlatformConnection = (platform) => {
-    setConnectingPlatform(platform);
-    setTimeout(() => {
-      setConnectedPlatforms(prev => {
-        const isConnecting = !prev[platform];
-        showToast(isConnecting ? `Successfully linked ${platform}!` : `Disconnected from ${platform}`);
-        return { ...prev, [platform]: isConnecting };
-      });
-      setConnectingPlatform(null);
-    }, 1000);
+    const isCurrentlyConnected = connectedPlatforms[platform];
+
+    if (!isCurrentlyConnected) {
+      // Simulate OAuth Popup Window
+      const width = 500;
+      const height = 650;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+      
+      const popup = window.open(
+        '', 
+        `Connect ${platform}`, 
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+      );
+
+      if (popup) {
+        popup.document.write(`
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; text-align: center; color: #333;">
+            <div style="width: 60px; height: 60px; background: #f0fdf4; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            </div>
+            <h2 style="margin-bottom: 10px;">Connect PeepalPost to ${platform}</h2>
+            <p style="color: #666; line-height: 1.5; margin-bottom: 30px;">
+              In a full production environment, this window displays the official ${platform} secure login screen.
+            </p>
+            <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 15px; text-align: left; margin-bottom: 30px;">
+              <h4 style="color: #d97706; margin: 0 0 8px 0;">Developer Notice:</h4>
+              <p style="color: #92400e; margin: 0; font-size: 14px; line-height: 1.5;">
+                To enable real account linking, you must register PeepalPost as a Developer Application with ${platform} to obtain an OAuth 2.0 Client ID. 
+                <br><br>
+                For a faster route without code, check the <b>Make.com / Zapier Webhook</b> method mentioned in your Roadmap!
+              </p>
+            </div>
+            <p style="color: #10b981; font-weight: bold; animation: pulse 2s infinite;">
+              Simulating successful connection in a few seconds...
+            </p>
+          </div>
+        `);
+      }
+
+      setConnectingPlatform(platform);
+
+      // Close popup and connect after 4 seconds
+      setTimeout(() => {
+        if (popup) popup.close();
+        setConnectedPlatforms(prev => ({ ...prev, [platform]: true }));
+        showToast(`Successfully linked ${platform}!`);
+        setConnectingPlatform(null);
+      }, 4000);
+
+    } else {
+      // Instantly disconnect
+      setConnectedPlatforms(prev => ({ ...prev, [platform]: false }));
+      showToast(`Disconnected from ${platform}`);
+    }
   };
 
-  // --- Simulated API Publishing ---
-  const handlePublish = (post) => {
+  // --- Real API Publishing via Make.com Webhook ---
+  const handlePublish = async (post) => {
     const unconnected = post.platforms.filter(p => !connectedPlatforms[p]);
     if (unconnected.length > 0) {
       showToast(`⚠️ Please link ${unconnected.join(', ')} first!`);
@@ -306,21 +356,47 @@ export default function App() {
     }
 
     setIsPublishing(post.id);
-    setPublishModalPostId(null);
     
-    setTimeout(() => {
-      const generatedLinks = post.platforms.map(platform => ({
-        platform: platform,
-        url: `https://${platform.toLowerCase()}.com/post/${crypto.randomUUID().slice(0,8)}`
-      }));
+    try {
+      // If a Webhook URL is provided, send the real data to Make.com!
+      if (MAKE_WEBHOOK_URL) {
+        const payload = {
+          postId: post.id,
+          topic: post.topic,
+          caption: post.caption,
+          hashtags: post.hashtags,
+          platforms: post.platforms,
+          date: new Date().toISOString()
+        };
 
-      // These use our database-connected update function automatically
-      updatePost(post.id, 'status', 'Published');
-      updatePost(post.id, 'postLinks', generatedLinks);
-      
+        // Fire the data over to Make.com silently in the background
+        await fetch(MAKE_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      // Mark as published in our database
+      setTimeout(() => {
+        const generatedLinks = post.platforms.map(platform => ({
+          platform: platform,
+          url: `https://${platform.toLowerCase()}.com/post/${crypto.randomUUID().slice(0,8)}`
+        }));
+
+        updatePost(post.id, 'status', 'Published');
+        updatePost(post.id, 'postLinks', generatedLinks);
+        
+        setIsPublishing(null);
+        setPublishModalPostId(null);
+        showToast(MAKE_WEBHOOK_URL ? `Successfully sent to Make.com for publishing!` : `Simulated post success! (Add Webhook to go live)`);
+      }, 1500); 
+
+    } catch (error) {
+      console.error("Error sending to Make.com:", error);
       setIsPublishing(null);
-      showToast(`Successfully posted & links retrieved for ${post.platforms.join(', ')}!`);
-    }, 2500); 
+      showToast("❌ Failed to send post to automation server.");
+    }
   };
 
   // --- WhatsApp Sharing Logic ---
